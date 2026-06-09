@@ -287,19 +287,7 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
         if (!searchResponse.ok) throw new Error(searchData.error || "Exa search failed");
 
         const message = formatZoomSearchMessage(apiCall.query, searchData);
-        await speakSearchResult(message);
-        const chatResponse = await fetch("/api/attendee/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...botContextRef.current,
-            message,
-          }),
-        });
-        const chatData = await chatResponse.json().catch(() => ({}));
-        if (!chatResponse.ok) {
-          console.error("[OYA API_CALL] Attendee chat failed", chatData);
-        }
+        await Promise.allSettled([sendZoomChatMessage(message), speakSearchResult(message)]);
       } catch (error) {
         console.error("[OYA API_CALL] failed", error);
         const message = `OYA real-time search failed: ${error instanceof Error ? error.message : "Unknown error"}`;
@@ -313,6 +301,21 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
         }).catch(() => undefined);
       } finally {
         processedApiCallsRef.current.add(sourceKey);
+      }
+    }
+
+    async function sendZoomChatMessage(message: string) {
+      const chatResponse = await fetch("/api/attendee/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...botContextRef.current,
+          message,
+        }),
+      });
+      const chatData = await chatResponse.json().catch(() => ({}));
+      if (!chatResponse.ok) {
+        console.error("[OYA API_CALL] Attendee chat failed", chatData);
       }
     }
 
