@@ -8,6 +8,7 @@ declare global {
     Telegram?: { WebApp?: { ready: () => void; expand: () => void } };
     BACKEND_URL?: string;
     FIREBASE_KEY?: string;
+    OYA_API_CALL_INSTRUCTIONS?: string;
     CallManager?: new (options: Record<string, unknown>) => {
       handleCall2: (partner: string, character: string, apiKey: string) => Promise<void>;
       hangUp: () => void;
@@ -34,6 +35,20 @@ type ExaSearchResponse = {
   error?: string;
   details?: unknown;
 };
+
+type ApiCall = {
+  type: string;
+  query: string;
+};
+
+const OYA_API_CALL_INSTRUCTIONS = `When you need real-time internet search or external data, output this command instead of normal speech:
+
+[[API_CALL]]
+type: internet_search
+query: <search query>
+[[/API_CALL]]
+
+Only use this command when fresh external information is needed.`;
 
 const apiKey =
   process.env.NEXT_PUBLIC_IRONHEART_API_KEY ||
@@ -107,6 +122,47 @@ function formatExaReply(data: ExaSearchResponse) {
   }`;
 }
 
+function parseApiCall(message: string): ApiCall | null {
+  const match = message.match(/\[\[API_CALL\]\]([\s\S]*?)\[\[\/API_CALL\]\]/i);
+  if (!match) return null;
+
+  const body = match[1];
+  const type = body.match(/type:\s*(.+)/i)?.[1]?.trim();
+  const query = body.match(/query:\s*([\s\S]+)/i)?.[1]?.trim();
+
+  if (!type || !query) return null;
+  return { type, query };
+}
+
+function cleanRuntimeText(text: string) {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function formatZoomSearchMessage(query: string, data: ExaSearchResponse) {
+  if (data.error) {
+    return `OYA could not complete the real-time search for "${query}". Error: ${data.error}`;
+  }
+
+  const bullets = data.bullets?.length
+    ? data.bullets.slice(0, 4).map((bullet) => `- ${bullet}`).join("\n")
+    : "";
+  const sources = (data.results || [])
+    .filter((result) => result.title && result.url)
+    .slice(0, 3)
+    .map((result, index) => `${index + 1}. ${result.title} — ${result.url}`)
+    .join("\n");
+
+  return [
+    "OYA found this in real time:",
+    "",
+    data.answer || `Search query: ${query}`,
+    bullets,
+    sources ? `Sources:\n${sources}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 function createDialAudio() {
   const audio = new Audio();
   audio.src = audio.canPlayType("audio/webm; codecs=opus") ? "/assets/dial.webm" : "/assets/dial.mp3";
@@ -163,6 +219,8 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
   const dialRef = useRef<HTMLAudioElement | null>(null);
   const hangupRef = useRef<HTMLAudioElement | null>(null);
   const autoStartedRef = useRef(false);
+  const processedApiCallsRef = useRef<Set<string>>(new Set());
+  const botContextRef = useRef<{ botId?: string; sessionId?: string }>({});
 
   const statusLabel = useMemo(() => {
     if (runtimeState === "loading") return "Joining meeting...";
@@ -173,6 +231,12 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
   useEffect(() => {
     window.BACKEND_URL = backendUrl;
     window.FIREBASE_KEY = firebaseKey;
+    window.OYA_API_CALL_INSTRUCTIONS = OYA_API_CALL_INSTRUCTIONS;
+    const params = new URLSearchParams(window.location.search);
+    botContextRef.current = {
+      botId: params.get("botId") || undefined,
+      sessionId: params.get("sessionId") || undefined,
+    };
     if (window.Telegram?.WebApp) {
       window.Telegram.WebApp.ready();
       window.Telegram.WebApp.expand();
@@ -185,6 +249,80 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
       if (managerRef.current) window.clearInterval(retry);
     }, 250);
     return () => window.clearInterval(retry);
+  }, []);
+
+  useEffect(() => {
+    const conversation = document.getElementById("conversation-inner");
+    if (!conversation) return;
+    const conversationElement = conversation;
+
+    async function executeApiCall(apiCall: ApiCall, sourceKey: string) {
+      if (apiCall.type !== "internet_search") {
+        console.warn("[OYA API_CALL] Unsupported type", apiCall);
+        return;
+      }
+
+      try {
+        console.log("[OYA API_CALL] internet_search", apiCall.query);
+        const searchResponse = await fetch("/api/exa/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: apiCall.query, type: "auto", numResults: 5 }),
+        });
+        const searchData = (await searchResponse.json()) as ExaSearchResponse;
+        if (!searchResponse.ok) throw new Error(searchData.error || "Exa search failed");
+
+        const message = formatZoomSearchMessage(apiCall.query, searchData);
+        const chatResponse = await fetch("/api/attendee/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...botContextRef.current,
+            message,
+          }),
+        });
+        const chatData = await chatResponse.json().catch(() => ({}));
+        if (!chatResponse.ok) {
+          console.error("[OYA API_CALL] Attendee chat failed", chatData);
+        }
+      } catch (error) {
+        console.error("[OYA API_CALL] failed", error);
+        const message = `OYA real-time search failed: ${error instanceof Error ? error.message : "Unknown error"}`;
+        await fetch("/api/attendee/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...botContextRef.current,
+            message,
+          }),
+        }).catch(() => undefined);
+      } finally {
+        processedApiCallsRef.current.add(sourceKey);
+      }
+    }
+
+    function scanConversation() {
+      const messages = conversationElement.querySelectorAll('[id^="message-"]');
+      messages.forEach((element) => {
+        const className = element.getAttribute("class") || "";
+        if (className.includes("human")) return;
+
+        const text = cleanRuntimeText(element.textContent || "");
+        const apiCall = parseApiCall(text);
+        if (!apiCall) return;
+
+        const sourceKey = `${element.id}:${apiCall.type}:${apiCall.query}`;
+        if (processedApiCallsRef.current.has(sourceKey)) return;
+        processedApiCallsRef.current.add(sourceKey);
+        void executeApiCall(apiCall, sourceKey);
+      });
+    }
+
+    const observer = new MutationObserver(scanConversation);
+    observer.observe(conversationElement, { childList: true, subtree: true, characterData: true });
+    scanConversation();
+
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {

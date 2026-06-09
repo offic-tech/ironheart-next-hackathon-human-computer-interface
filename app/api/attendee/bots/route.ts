@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
+import { setAttendeeSession } from "../../../../lib/attendeeSessions";
 
 const attendeeApiOrigin = process.env.ATTENDEE_API_ORIGIN || "https://app.attendee.dev";
 const attendeeApiKey = process.env.ATTENDEE_API_KEY;
@@ -25,7 +27,8 @@ export async function POST(request: NextRequest) {
   }
 
   const publicOrigin = getPublicOrigin(request);
-  const voiceAgentUrl = `${publicOrigin}/agent?autostart=1&source=attendee`;
+  const sessionId = randomUUID();
+  const voiceAgentUrl = `${publicOrigin}/agent?autostart=1&source=attendee&sessionId=${encodeURIComponent(sessionId)}`;
   const payload = {
     meeting_url: meetingUrl,
     bot_name: "OYA - AI Digital Employee",
@@ -60,9 +63,38 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const botId = data.id;
+  const finalVoiceAgentUrl = botId
+    ? `${publicOrigin}/agent?autostart=1&source=attendee&sessionId=${encodeURIComponent(sessionId)}&botId=${encodeURIComponent(botId)}`
+    : voiceAgentUrl;
+
+  if (botId) {
+    setAttendeeSession(sessionId, botId);
+    const patchResponse = await fetch(`${attendeeApiOrigin}/api/v1/bots/${botId}/voice_agent_settings`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Token ${attendeeApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        url: finalVoiceAgentUrl,
+      }),
+    });
+
+    if (!patchResponse.ok) {
+      const patchData = await patchResponse.json().catch(() => ({}));
+      console.warn("[attendee voice agent settings patch failed]", {
+        status: patchResponse.status,
+        botId,
+        response: patchData,
+      });
+    }
+  }
+
   return NextResponse.json({
     ...data,
-    voice_agent_url: voiceAgentUrl,
+    sessionId,
+    voice_agent_url: finalVoiceAgentUrl,
     request_payload: payload,
   });
 }
