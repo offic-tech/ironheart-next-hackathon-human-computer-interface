@@ -34,6 +34,16 @@ create table if not exists public.meeting_bots (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.stripe_events (
+  id uuid primary key default gen_random_uuid(),
+  stripe_event_id text not null unique,
+  type text not null,
+  payload jsonb not null,
+  processed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
 alter table public.customers enable row level security;
 alter table public.subscriptions enable row level security;
 alter table public.meeting_bots enable row level security;
+alter table public.stripe_events enable row level security;
