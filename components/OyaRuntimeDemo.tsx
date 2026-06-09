@@ -230,6 +230,7 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
   const managerRef = useRef<InstanceType<NonNullable<typeof window.CallManager>> | null>(null);
   const dialRef = useRef<HTMLAudioElement | null>(null);
   const hangupRef = useRef<HTMLAudioElement | null>(null);
+  const speechRef = useRef<HTMLAudioElement | null>(null);
   const autoStartedRef = useRef(false);
   const processedApiCallsRef = useRef<Set<string>>(new Set());
   const botContextRef = useRef<{ botId?: string; sessionId?: string }>({});
@@ -255,6 +256,7 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
     }
     dialRef.current = createDialAudio();
     hangupRef.current = new Audio("/assets/hangup.mp3");
+    speechRef.current = new Audio();
     const retry = window.setInterval(() => {
       resolveRuntimeGlobals();
       if (window.CallManager && !managerRef.current) initCallManager();
@@ -285,6 +287,7 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
         if (!searchResponse.ok) throw new Error(searchData.error || "Exa search failed");
 
         const message = formatZoomSearchMessage(apiCall.query, searchData);
+        await speakSearchResult(message);
         const chatResponse = await fetch("/api/attendee/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -310,6 +313,41 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
         }).catch(() => undefined);
       } finally {
         processedApiCallsRef.current.add(sourceKey);
+      }
+    }
+
+    async function speakSearchResult(message: string) {
+      try {
+        const spokenText = message
+          .replace(/^OYA found this in real time:\s*/i, "")
+          .replace(/Sources:\s*[\s\S]*/i, "")
+          .trim();
+
+        if (!spokenText || !speechRef.current) return;
+
+        const response = await fetch("/api/hidoba/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: `I found this in real time. ${spokenText}`,
+            language: "auto",
+          }),
+        });
+
+        if (!response.ok) {
+          const details = await response.json().catch(() => ({}));
+          console.error("[OYA TTS] failed", details);
+          return;
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        speechRef.current.pause();
+        speechRef.current.src = url;
+        speechRef.current.onended = () => URL.revokeObjectURL(url);
+        await speechRef.current.play();
+      } catch (error) {
+        console.error("[OYA TTS] playback failed", error);
       }
     }
 
