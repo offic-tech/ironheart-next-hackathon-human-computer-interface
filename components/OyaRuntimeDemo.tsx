@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Script from "next/script";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 declare global {
@@ -59,6 +58,30 @@ function localOyaReply(text: string) {
   return "For this meeting I would listen for goals, decisions, blockers, owner names, deadlines, and context drift. When the room gets stuck, I would speak with a short clarification or summary.";
 }
 
+function resolveRuntimeGlobals() {
+  const scope = window as Window & {
+    AudioClient?: unknown;
+  };
+
+  if (!scope.CallManager) {
+    try {
+      scope.CallManager = Function("return typeof CallManager !== 'undefined' ? CallManager : undefined")();
+    } catch {
+      scope.CallManager = undefined;
+    }
+  }
+
+  if (!scope.AudioClient) {
+    try {
+      scope.AudioClient = Function("return typeof AudioClient !== 'undefined' ? AudioClient : undefined")();
+    } catch {
+      scope.AudioClient = undefined;
+    }
+  }
+
+  return Boolean(scope.CallManager);
+}
+
 type OyaRuntimeDemoProps = {
   autoStart?: boolean;
   agentMode?: boolean;
@@ -102,6 +125,7 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
     dialRef.current.loop = true;
     hangupRef.current = new Audio("/assets/hangup.mp3");
     const retry = window.setInterval(() => {
+      resolveRuntimeGlobals();
       if (window.CallManager && !managerRef.current) initCallManager();
       if (managerRef.current) window.clearInterval(retry);
     }, 250);
@@ -131,6 +155,7 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
   }
 
   function initCallManager() {
+    resolveRuntimeGlobals();
     if (!window.CallManager || managerRef.current) return;
     managerRef.current = new window.CallManager({
       onCallStart: () => {
@@ -220,21 +245,6 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
       }`}
     >
       <div id="conversation-inner" className="hidden" />
-      <Script src="https://telegram.org/js/telegram-web-app.js" strategy="afterInteractive" />
-      <Script
-        id="ironheart-runtime-bootstrap"
-        strategy="beforeInteractive"
-        dangerouslySetInnerHTML={{
-          __html: `window.BACKEND_URL=${JSON.stringify(backendUrl)};window.FIREBASE_KEY=${JSON.stringify(firebaseKey)};`,
-        }}
-      />
-      <Script src="https://backend.funtimewithaisolutions.com/sdk/history.js" strategy="afterInteractive" />
-      <Script src="https://backend.funtimewithaisolutions.com/sdk/audio.js" strategy="afterInteractive" />
-      <Script
-        src="https://backend.funtimewithaisolutions.com/sdk/sdk.js"
-        strategy="afterInteractive"
-        onLoad={initCallManager}
-      />
 
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(245,166,35,0.18),transparent_38%),linear-gradient(180deg,transparent,rgba(0,0,0,0.58))]" />
       <div className={`relative grid ${agentMode ? "h-screen min-h-[720px] lg:grid-cols-[1fr_1fr]" : "min-h-[760px] lg:grid-cols-[1.05fr_0.95fr]"}`}>
