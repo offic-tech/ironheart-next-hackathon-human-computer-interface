@@ -1,6 +1,7 @@
 import Image from "next/image";
 import OyaRuntimeDemo from "../components/OyaRuntimeDemo";
 import AttendeeJoinForm from "../components/AttendeeJoinForm";
+import CheckoutButton from "../components/CheckoutButton";
 
 const moments = [
   {
@@ -21,6 +22,37 @@ const moments = [
 ];
 
 const layers = ["voice", "memory", "context", "orchestration", "knowledge", "decision support"];
+
+const pricingPlans = [
+  {
+    name: "Starter",
+    price: "$25",
+    cadence: "per month",
+    priceId: process.env.STRIPE_PRICE_AI_DIGITAL_EMPLOYEE_25 || "price_1TgT1dJWfiRe8nsJtfOuPtGf",
+    description: "For solo founders and small teams testing OYA in real meetings.",
+    features: ["Live meeting copilot", "Voice runtime access", "Meeting notes workflow", "Zoom bot checkout"],
+    cta: "Start with OYA",
+  },
+  {
+    name: "Growth",
+    price: "$100",
+    cadence: "per month",
+    priceId: process.env.STRIPE_PRICE_AI_DIGITAL_EMPLOYEE_100 || "price_1TgT1dJWfiRe8nsJz7WaUht2",
+    description: "For teams that want an AI Digital Employee in recurring operational meetings.",
+    features: ["Everything in Starter", "Priority runtime capacity", "Search-assisted meeting context", "Team workflow support"],
+    cta: "Choose Growth",
+    featured: true,
+  },
+  {
+    name: "Scale",
+    price: "$900",
+    cadence: "per month",
+    priceId: process.env.STRIPE_PRICE_AI_DIGITAL_EMPLOYEE_900 || "price_1TgT1dJWfiRe8nsJdahm4yWj",
+    description: "For companies building voice-first meeting operations on IronHeart runtime.",
+    features: ["Everything in Growth", "Enterprise deployment path", "Runtime integration support", "Custom meeting workflows"],
+    cta: "Deploy at Scale",
+  },
+];
 
 export default function Home() {
   return (
@@ -72,6 +104,70 @@ export default function Home() {
       </section>
 
       <AttendeeJoinForm />
+
+      <section className="mx-auto w-full max-w-7xl px-6 py-24 sm:px-10 lg:px-12" id="pricing">
+        <div className="grid gap-10 lg:grid-cols-[0.75fr_1.25fr] lg:items-end">
+          <div>
+            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-iron-green">
+              AI Digital Employee
+            </p>
+            <h2 className="mt-5 max-w-2xl text-5xl font-light leading-none tracking-[-0.06em] sm:text-7xl">
+              Subscribe to OYA.
+            </h2>
+          </div>
+          <p className="max-w-3xl text-xl font-light leading-9 text-iron-muted">
+            Choose a monthly plan for OYA, the meeting-native AI Digital Employee powered by
+            IronHeart.AI Runtime. Checkout is handled securely by Stripe.
+          </p>
+        </div>
+
+        <div className="mt-12 grid gap-4 lg:grid-cols-3">
+          {pricingPlans.map((plan) => (
+            <article
+              className={`relative min-h-[520px] overflow-hidden border p-6 sm:p-8 ${
+                plan.featured
+                  ? "border-iron-green/45 bg-iron-green/[0.09] shadow-[0_0_80px_rgba(61,223,143,0.12)]"
+                  : "border-white/10 bg-white/[0.035]"
+              }`}
+              key={plan.name}
+            >
+              {plan.featured ? (
+                <div className="absolute right-5 top-5 border border-iron-green/40 bg-iron-green/10 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-iron-green">
+                  Recommended
+                </div>
+              ) : null}
+              <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-iron-muted">{plan.name}</p>
+              <div className="mt-10 flex items-end gap-3">
+                <span className="text-7xl font-light leading-none tracking-[-0.08em]">{plan.price}</span>
+                <span className="pb-2 font-mono text-[11px] uppercase tracking-[0.16em] text-iron-muted">
+                  {plan.cadence}
+                </span>
+              </div>
+              <p className="mt-7 min-h-[84px] text-base leading-7 text-iron-muted">{plan.description}</p>
+              <div className="mt-8 h-px bg-white/10" />
+              <ul className="mt-8 space-y-4">
+                {plan.features.map((feature) => (
+                  <li className="flex gap-3 text-sm leading-6 text-iron-paper/85" key={feature}>
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-iron-green shadow-[0_0_16px_rgba(61,223,143,0.8)]" />
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+              <CheckoutButton
+                className={`absolute bottom-6 left-6 right-6 rounded-full px-6 py-4 font-mono text-xs font-semibold uppercase tracking-[0.16em] transition disabled:cursor-wait disabled:opacity-70 sm:bottom-8 sm:left-8 sm:right-8 ${
+                  plan.featured
+                    ? "bg-iron-green text-black hover:-translate-y-1"
+                    : "border border-white/15 bg-white/[0.06] text-white hover:bg-white/10"
+                }`}
+                planName={plan.name}
+                priceId={plan.priceId}
+              >
+                {plan.cta}
+              </CheckoutButton>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <section className="mx-auto grid w-full max-w-7xl gap-8 px-6 py-24 sm:px-10 lg:grid-cols-[0.9fr_1.1fr] lg:px-12" id="story">
         <div>
