@@ -99,6 +99,13 @@ function shouldUseExa(text: string) {
     "source",
     "sources",
     "what is happening",
+    "i will search",
+    "i'll search",
+    "let me search",
+    "let me look",
+    "checking",
+    "i am searching",
+    "i'm searching",
     "что",
     "найди",
     "поищи",
@@ -107,6 +114,11 @@ function shouldUseExa(text: string) {
     "свеж",
     "последн",
   ].some((trigger) => normalized.includes(trigger));
+}
+
+function isSearchResultMessage(text: string) {
+  const normalized = text.toLowerCase();
+  return normalized.includes("oya found this in real time") || normalized.includes("sources:") || normalized.includes("real-time search failed");
 }
 
 function formatExaReply(data: ExaSearchResponse) {
@@ -307,11 +319,11 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
         const className = element.getAttribute("class") || "";
         const text = cleanRuntimeText(element.textContent || "");
 
-        const apiCall = className.includes("human")
-          ? shouldUseExa(text)
+        const apiCall =
+          parseApiCall(text) ||
+          (shouldUseExa(text) && !isSearchResultMessage(text)
             ? { type: "internet_search", query: text }
-            : null
-          : parseApiCall(text);
+            : null);
 
         if (!apiCall || apiCall.query.length < 8) return;
 
