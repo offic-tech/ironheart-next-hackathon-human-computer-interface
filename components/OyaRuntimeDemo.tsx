@@ -7,6 +7,8 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 declare global {
   interface Window {
     Telegram?: { WebApp?: { ready: () => void; expand: () => void } };
+    BACKEND_URL?: string;
+    FIREBASE_KEY?: string;
     CallManager?: new (options: Record<string, unknown>) => {
       handleCall2: (partner: string, character: string, apiKey: string) => Promise<void>;
       hangUp: () => void;
@@ -25,6 +27,12 @@ type ChatMessage = {
 const apiKey =
   process.env.NEXT_PUBLIC_IRONHEART_API_KEY ||
   "US5Ccoik5EKkTmcw59iVn6t4YdBZkSpEDlNT8AxW";
+const backendUrl =
+  process.env.NEXT_PUBLIC_IRONHEART_BACKEND_URL ||
+  "https://backend.funtimewithaisolutions.com";
+const firebaseKey =
+  process.env.NEXT_PUBLIC_FIREBASE_KEY ||
+  "AIzaSyCWTgYvZ7TnYQiVdvJNDysBrzjNojxj2_s";
 const partner = process.env.NEXT_PUBLIC_IRONHEART_PARTNER || "github:godfather";
 const character = process.env.NEXT_PUBLIC_IRONHEART_CHARACTER || "oya";
 
@@ -62,7 +70,7 @@ export default function OyaRuntimeDemo() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       originator: "bot",
-      text: "Hi. I am OYA, the AI participant for live meetings. Ask me how I join, speak, remember context, or summarize decisions.",
+      text: "Hi. I am OYA, the AI Digital Employee for live meetings. Ask me how I join, speak, remember context, or summarize decisions.",
       is_processed: true,
     },
   ]);
@@ -78,6 +86,8 @@ export default function OyaRuntimeDemo() {
   }, [runtimeState, sdkReady, seconds]);
 
   useEffect(() => {
+    window.BACKEND_URL = backendUrl;
+    window.FIREBASE_KEY = firebaseKey;
     if (window.Telegram?.WebApp) {
       window.Telegram.WebApp.ready();
       window.Telegram.WebApp.expand();
@@ -85,6 +95,11 @@ export default function OyaRuntimeDemo() {
     dialRef.current = new Audio("/assets/dial.mp3");
     dialRef.current.loop = true;
     hangupRef.current = new Audio("/assets/hangup.mp3");
+    const retry = window.setInterval(() => {
+      if (window.CallManager && !managerRef.current) initCallManager();
+      if (managerRef.current) window.clearInterval(retry);
+    }, 250);
+    return () => window.clearInterval(retry);
   }, []);
 
   useEffect(() => {
@@ -188,7 +203,15 @@ export default function OyaRuntimeDemo() {
 
   return (
     <section className="relative overflow-hidden border border-white/10 bg-[#0d0d0a]/80 shadow-[0_44px_140px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+      <div id="conversation-inner" className="hidden" />
       <Script src="https://telegram.org/js/telegram-web-app.js" strategy="afterInteractive" />
+      <Script
+        id="ironheart-runtime-bootstrap"
+        strategy="beforeInteractive"
+        dangerouslySetInnerHTML={{
+          __html: `window.BACKEND_URL=${JSON.stringify(backendUrl)};window.FIREBASE_KEY=${JSON.stringify(firebaseKey)};`,
+        }}
+      />
       <Script src="https://backend.funtimewithaisolutions.com/sdk/history.js" strategy="afterInteractive" />
       <Script src="https://backend.funtimewithaisolutions.com/sdk/audio.js" strategy="afterInteractive" />
       <Script
@@ -222,7 +245,7 @@ export default function OyaRuntimeDemo() {
             </p>
             <h2 className="mt-3 text-5xl font-semibold tracking-[-0.07em] sm:text-7xl">OYA</h2>
             <p className="mt-4 max-w-xl text-lg leading-8 text-white/76">
-              A voice-native AI participant that joins the room, listens for context, speaks when useful,
+              A voice-native AI Digital Employee that joins the room, listens for context, speaks when useful,
               and leaves with structured memory.
             </p>
           </div>

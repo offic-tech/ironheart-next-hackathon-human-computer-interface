@@ -42,7 +42,7 @@ export default function Home() {
               OYA
             </h1>
             <h2 className="mt-7 max-w-3xl text-[clamp(2.5rem,6.5vw,6.6rem)] font-light leading-[0.9] tracking-[-0.06em]">
-              AI participant for live meetings.
+              AI Digital Employee for live meetings.
             </h2>
             <p className="mt-8 max-w-2xl text-xl font-light leading-8 text-iron-muted sm:text-2xl sm:leading-10">
               OYA joins your meetings, listens, speaks, remembers, and summarizes in real time.
