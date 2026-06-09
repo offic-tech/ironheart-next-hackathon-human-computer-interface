@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 const attendeeApiOrigin = process.env.ATTENDEE_API_ORIGIN || "https://app.attendee.dev";
@@ -27,8 +26,14 @@ export async function POST(request: NextRequest) {
 
   const publicOrigin = getPublicOrigin(request);
   const voiceAgentUrl = `${publicOrigin}/agent?autostart=1&source=attendee`;
-  const webhookUrl = `${publicOrigin}/api/attendee/webhook`;
-  const deduplicationKey = createHash("sha256").update(`oya:${meetingUrl}`).digest("hex").slice(0, 32);
+  const payload = {
+    meeting_url: meetingUrl,
+    bot_name: "OYA - AI Digital Employee",
+    join_at: body.join_at,
+    voice_agent_settings: {
+      url: voiceAgentUrl,
+    },
+  };
 
   const attendeeResponse = await fetch(`${attendeeApiOrigin}/api/v1/bots`, {
     method: "POST",
@@ -36,30 +41,16 @@ export async function POST(request: NextRequest) {
       Authorization: `Token ${attendeeApiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      meeting_url: meetingUrl,
-      bot_name: "OYA - AI Digital Employee",
-      deduplication_key: deduplicationKey,
-      join_at: body.join_at,
-      voice_agent_settings: {
-        url: voiceAgentUrl,
-      },
-      webhooks: [
-        {
-          url: webhookUrl,
-          triggers: [
-            "bot.state_change",
-            "transcript.update",
-            "chat_messages.update",
-            "participant_events.join_leave",
-          ],
-        },
-      ],
-    }),
+    body: JSON.stringify(payload),
   });
 
   const data = await attendeeResponse.json().catch(() => ({}));
   if (!attendeeResponse.ok) {
+    console.error("[attendee bot creation failed]", {
+      status: attendeeResponse.status,
+      payload,
+      response: data,
+    });
     return NextResponse.json(
       { error: "Attendee bot creation failed.", details: data },
       { status: attendeeResponse.status },
@@ -69,5 +60,6 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ...data,
     voice_agent_url: voiceAgentUrl,
+    request_payload: payload,
   });
 }

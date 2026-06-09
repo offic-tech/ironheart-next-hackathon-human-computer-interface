@@ -7,6 +7,7 @@ type BotResponse = {
   state?: string;
   meeting_url?: string;
   voice_agent_url?: string;
+  request_payload?: unknown;
   error?: string;
   details?: unknown;
 };
@@ -74,7 +75,14 @@ export default function AttendeeJoinForm() {
           {result ? (
             <div className="border border-white/10 bg-black/30 p-4 text-sm leading-6 text-white/70">
               {result.error ? (
-                <p className="text-red-300">{result.error}</p>
+                <>
+                  <p className="text-red-300">{result.error}</p>
+                  {result.details ? (
+                    <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/50 p-3 text-xs text-white/55">
+                      {JSON.stringify(result.details, null, 2)}
+                    </pre>
+                  ) : null}
+                </>
               ) : (
                 <>
                   <p>
