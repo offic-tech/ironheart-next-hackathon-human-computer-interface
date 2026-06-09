@@ -12,6 +12,7 @@ const ttsApiKey =
   "US5Ccoik5EKkTmcw59iVn6t4YdBZkSpEDlNT8AxW";
 
 const ttsVoice = process.env.HIDOBA_TTS_VOICE || "godfather_avila_en_us_4751dc4d";
+const fallbackTtsVoice = process.env.HIDOBA_TTS_FALLBACK_VOICE || "Dennis";
 
 function cleanSpokenText(input: string) {
   return input
@@ -35,31 +36,53 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Text is required for TTS." }, { status: 400 });
   }
 
-  const ttsResponse = await fetch(`${ttsApiOrigin}/v2/audio/speech`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${ttsApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "ishikawa",
-      voice: body.voice || ttsVoice,
-      input: text,
-      language: body.language || "auto",
-      response_format: "mp3",
-      speed: body.speed || 1,
-    }),
-  });
+  const voiceCandidates = Array.from(
+    new Set([body.voice, ttsVoice, fallbackTtsVoice].filter((voice): voice is string => Boolean(voice))),
+  );
+  let ttsResponse: Response | null = null;
+  let selectedVoice = voiceCandidates[0] || fallbackTtsVoice;
+  let lastErrorText = "";
 
-  if (!ttsResponse.ok) {
-    const errorText = await ttsResponse.text().catch(() => "");
-    console.error("[hidoba tts failed]", {
+  for (const voice of voiceCandidates) {
+    selectedVoice = voice;
+    ttsResponse = await fetch(`${ttsApiOrigin}/v2/audio/speech`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${ttsApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "ishikawa",
+        voice,
+        input: text,
+        language: body.language || "auto",
+        response_format: "mp3",
+        speed: body.speed || 1,
+      }),
+    });
+
+    if (ttsResponse.ok) break;
+
+    lastErrorText = await ttsResponse.text().catch(() => "");
+    const canRetry = /unknown voice|not found/i.test(lastErrorText);
+    console.warn("[hidoba tts candidate failed]", {
       status: ttsResponse.status,
-      response: errorText.slice(0, 500),
+      voice,
+      response: lastErrorText.slice(0, 500),
+      retrying: canRetry,
+    });
+
+    if (!canRetry) break;
+  }
+
+  if (!ttsResponse?.ok) {
+    console.error("[hidoba tts failed]", {
+      status: ttsResponse?.status,
+      response: lastErrorText.slice(0, 500),
     });
     return NextResponse.json(
-      { error: "Hidoba TTS request failed.", details: errorText },
-      { status: ttsResponse.status },
+      { error: "Hidoba TTS request failed.", details: lastErrorText },
+      { status: ttsResponse?.status || 500 },
     );
   }
 
@@ -69,6 +92,7 @@ export async function POST(request: NextRequest) {
       "Content-Type": ttsResponse.headers.get("content-type") || "audio/mpeg",
       "Cache-Control": "no-store",
       "X-Hidoba-TTS-Request-Id": ttsResponse.headers.get("x-hidoba-tts-request-id") || "",
+      "X-Hidoba-TTS-Voice": selectedVoice,
     },
   });
 }

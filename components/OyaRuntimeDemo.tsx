@@ -116,6 +116,33 @@ function shouldUseExa(text: string) {
   ].some((trigger) => normalized.includes(trigger));
 }
 
+function isOyaSearchPendingMessage(text: string) {
+  const normalized = text.toLowerCase();
+  return [
+    "i made a request",
+    "i have made a request",
+    "i sent a request",
+    "i have sent a request",
+    "waiting for a response",
+    "waiting for the response",
+    "waiting for an answer",
+    "i am waiting for",
+    "i'm waiting for",
+    "i will wait for",
+    "i'll wait for",
+    "let me wait",
+    "я сделала запрос",
+    "я сделал запрос",
+    "я отправила запрос",
+    "я отправил запрос",
+    "жду ответ",
+    "жду ответа",
+    "подожду ответ",
+    "ожидаю ответ",
+    "запрос отправлен",
+  ].some((trigger) => normalized.includes(trigger));
+}
+
 function isSearchResultMessage(text: string) {
   const normalized = text.toLowerCase();
   return normalized.includes("oya found this in real time") || normalized.includes("sources:") || normalized.includes("real-time search failed");
@@ -365,23 +392,53 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
     }
 
     function scanConversation() {
-      const messages = conversationElement.querySelectorAll('[id^="message-"]');
-      messages.forEach((element) => {
+      const messages = Array.from(conversationElement.querySelectorAll('[id^="message-"]')).map((element) => {
         const className = element.getAttribute("class") || "";
         const text = cleanRuntimeText(element.textContent || "");
+        const isHuman =
+          className.includes("human") ||
+          className.includes("user") ||
+          className.includes("client") ||
+          element.id.toLowerCase().includes("human") ||
+          element.id.toLowerCase().includes("user");
+
+        return { element, className, text, isHuman };
+      });
+
+      messages.forEach((message, index) => {
+        const previousHumanMessage = [...messages]
+          .slice(0, index)
+          .reverse()
+          .find((candidate) => candidate.isHuman && candidate.text.length > 7);
+
+        const pendingSearchCall =
+          !message.isHuman && isOyaSearchPendingMessage(message.text) && previousHumanMessage
+            ? { type: "internet_search", query: previousHumanMessage.text }
+            : null;
 
         const apiCall =
-          parseApiCall(text) ||
-          (shouldUseExa(text) && !isSearchResultMessage(text)
-            ? { type: "internet_search", query: text }
+          parseApiCall(message.text) ||
+          pendingSearchCall ||
+          (message.isHuman && shouldUseExa(message.text) && !isSearchResultMessage(message.text)
+            ? { type: "internet_search", query: message.text }
             : null);
 
-        if (!apiCall || apiCall.query.length < 8) return;
+        const fallbackBotSearchCall =
+          !message.isHuman &&
+          shouldUseExa(message.text) &&
+          !isSearchResultMessage(message.text) &&
+          previousHumanMessage
+            ? { type: "internet_search", query: previousHumanMessage.text }
+            : null;
 
-        const sourceKey = `${className.includes("human") ? "human" : "bot"}:${element.id}:${apiCall.type}:${apiCall.query}`;
+        const finalApiCall = apiCall || fallbackBotSearchCall;
+
+        if (!finalApiCall || finalApiCall.query.length < 8) return;
+
+        const sourceKey = `${message.isHuman ? "human" : "bot"}:${message.element.id}:${finalApiCall.type}:${finalApiCall.query}`;
         if (processedApiCallsRef.current.has(sourceKey)) return;
         processedApiCallsRef.current.add(sourceKey);
-        void executeApiCall(apiCall, sourceKey);
+        void executeApiCall(finalApiCall, sourceKey);
       });
     }
 
