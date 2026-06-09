@@ -23,6 +23,18 @@ type ChatMessage = {
   is_processed: boolean;
 };
 
+type ExaSearchResponse = {
+  answer?: string;
+  bullets?: string[];
+  results?: Array<{
+    title?: string;
+    url?: string;
+    highlights?: string[];
+  }>;
+  error?: string;
+  details?: unknown;
+};
+
 const apiKey =
   process.env.NEXT_PUBLIC_IRONHEART_API_KEY ||
   "US5Ccoik5EKkTmcw59iVn6t4YdBZkSpEDlNT8AxW";
@@ -56,6 +68,43 @@ function localOyaReply(text: string) {
     return "OYA runs on IronHeart.AI Runtime: realtime voice, memory, context, orchestration, and knowledge retrieval behind one meeting-native persona.";
   }
   return "For this meeting I would listen for goals, decisions, blockers, owner names, deadlines, and context drift. When the room gets stuck, I would speak with a short clarification or summary.";
+}
+
+function shouldUseExa(text: string) {
+  const normalized = text.toLowerCase();
+  return [
+    "search",
+    "find",
+    "look up",
+    "lookup",
+    "research",
+    "latest",
+    "recent",
+    "google",
+    "source",
+    "sources",
+    "what is happening",
+    "что",
+    "найди",
+    "поищи",
+    "посмотри",
+    "исследуй",
+    "свеж",
+    "последн",
+  ].some((trigger) => normalized.includes(trigger));
+}
+
+function formatExaReply(data: ExaSearchResponse) {
+  if (data.error) return `I could not search Exa yet: ${data.error}`;
+  const bullets = data.bullets?.length ? `\n\n${data.bullets.map((bullet) => `- ${bullet}`).join("\n")}` : "";
+  const sources = (data.results || [])
+    .filter((result) => result.title && result.url)
+    .slice(0, 3)
+    .map((result, index) => `${index + 1}. ${result.title} — ${result.url}`)
+    .join("\n");
+  return `${data.answer || "I found relevant sources, but Exa did not return a synthesized answer."}${bullets}${
+    sources ? `\n\nSources:\n${sources}` : ""
+  }`;
 }
 
 function createDialAudio() {
@@ -231,14 +280,16 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
     setChatMessages([...nextMessages, { originator: "bot", text: "OYA is thinking...", is_processed: true }]);
 
     try {
-      const response = await fetch("/api/oya/text", {
+      const endpoint = shouldUseExa(text) ? "/api/exa/search" : "/api/oya/text";
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: nextMessages }),
+        body: JSON.stringify(shouldUseExa(text) ? { query: text, type: "auto", numResults: 5 } : { messages: nextMessages }),
       });
       if (!response.ok) throw new Error("Text API failed");
-      const data = (await response.json()) as { text?: string };
-      setChatMessages([...nextMessages, { originator: "bot", text: data.text || localOyaReply(text), is_processed: true }]);
+      const data = (await response.json()) as ({ text?: string } & ExaSearchResponse);
+      const reply = shouldUseExa(text) ? formatExaReply(data) : data.text || localOyaReply(text);
+      setChatMessages([...nextMessages, { originator: "bot", text: reply, is_processed: true }]);
     } catch {
       setChatMessages([...nextMessages, { originator: "bot", text: localOyaReply(text), is_processed: true }]);
     }
