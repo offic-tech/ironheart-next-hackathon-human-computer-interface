@@ -305,13 +305,17 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
       const messages = conversationElement.querySelectorAll('[id^="message-"]');
       messages.forEach((element) => {
         const className = element.getAttribute("class") || "";
-        if (className.includes("human")) return;
-
         const text = cleanRuntimeText(element.textContent || "");
-        const apiCall = parseApiCall(text);
-        if (!apiCall) return;
 
-        const sourceKey = `${element.id}:${apiCall.type}:${apiCall.query}`;
+        const apiCall = className.includes("human")
+          ? shouldUseExa(text)
+            ? { type: "internet_search", query: text }
+            : null
+          : parseApiCall(text);
+
+        if (!apiCall || apiCall.query.length < 8) return;
+
+        const sourceKey = `${className.includes("human") ? "human" : "bot"}:${element.id}:${apiCall.type}:${apiCall.query}`;
         if (processedApiCallsRef.current.has(sourceKey)) return;
         processedApiCallsRef.current.add(sourceKey);
         void executeApiCall(apiCall, sourceKey);
