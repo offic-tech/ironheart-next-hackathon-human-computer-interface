@@ -39,3 +39,46 @@ body::before {
   background-size: 56px 56px;
   mask-image: linear-gradient(to bottom, black, transparent 78%);
 }
+
+button,
+a,
+input {
+  font: inherit;
+}
+
+.control-button {
+  min-height: 58px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.oya-wave {
+  height: 52px;
+  width: 180%;
+  background:
+    linear-gradient(90deg, transparent 0 3%, rgba(61, 223, 143, 0.95) 3.3% 3.7%, transparent 4% 8%),
+    linear-gradient(90deg, transparent 0 10%, rgba(245, 166, 35, 0.9) 10.2% 10.7%, transparent 11% 18%);
+  background-size: 112px 100%, 158px 100%;
+  filter: drop-shadow(0 0 12px rgba(61, 223, 143, 0.65));
+  mask-image: repeating-linear-gradient(
+    90deg,
+    transparent 0 8px,
+    black 8px 11px,
+    transparent 11px 18px
+  );
+  animation: oya-wave-move 1.2s linear infinite;
+}
+
+@keyframes oya-wave-move {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-112px);
+  }
+}
