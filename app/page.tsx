@@ -1,5 +1,6 @@
 import Image from "next/image";
 import OyaRuntimeDemo from "../components/OyaRuntimeDemo";
+import AttendeeJoinForm from "../components/AttendeeJoinForm";
 
 const moments = [
   {
@@ -50,9 +51,9 @@ export default function Home() {
             <div className="mt-10 flex flex-wrap gap-3">
               <a
                 className="rounded-full bg-iron-red px-7 py-4 font-mono text-xs font-semibold uppercase tracking-[0.16em] text-white shadow-[0_18px_60px_rgba(255,54,54,0.25)] transition hover:-translate-y-1"
-                href="#runtime"
+                href="#zoom"
               >
-                Try runtime
+                Connect Zoom
               </a>
               <a
                 className="rounded-full border border-white/15 bg-white/[0.06] px-7 py-4 font-mono text-xs font-semibold uppercase tracking-[0.16em] text-white transition hover:bg-white/10"
@@ -69,6 +70,8 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      <AttendeeJoinForm />
 
       <section className="mx-auto grid w-full max-w-7xl gap-8 px-6 py-24 sm:px-10 lg:grid-cols-[0.9fr_1.1fr] lg:px-12" id="story">
         <div>

@@ -59,7 +59,12 @@ function localOyaReply(text: string) {
   return "For this meeting I would listen for goals, decisions, blockers, owner names, deadlines, and context drift. When the room gets stuck, I would speak with a short clarification or summary.";
 }
 
-export default function OyaRuntimeDemo() {
+type OyaRuntimeDemoProps = {
+  autoStart?: boolean;
+  agentMode?: boolean;
+};
+
+export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }: OyaRuntimeDemoProps) {
   const [sdkReady, setSdkReady] = useState(false);
   const [runtimeState, setRuntimeState] = useState<RuntimeState>("idle");
   const [muted, setMuted] = useState(false);
@@ -78,6 +83,7 @@ export default function OyaRuntimeDemo() {
   const managerRef = useRef<InstanceType<NonNullable<typeof window.CallManager>> | null>(null);
   const dialRef = useRef<HTMLAudioElement | null>(null);
   const hangupRef = useRef<HTMLAudioElement | null>(null);
+  const autoStartedRef = useRef(false);
 
   const statusLabel = useMemo(() => {
     if (runtimeState === "loading") return "Joining meeting...";
@@ -107,6 +113,12 @@ export default function OyaRuntimeDemo() {
     const timer = window.setInterval(() => setSeconds((value) => value + 1), 1000);
     return () => window.clearInterval(timer);
   }, [runtimeState]);
+
+  useEffect(() => {
+    if (!autoStart || autoStartedRef.current || !sdkReady || runtimeState !== "idle") return;
+    autoStartedRef.current = true;
+    startCall();
+  }, [autoStart, sdkReady, runtimeState]);
 
   function stopDialTone() {
     if (!dialRef.current) return;
@@ -202,7 +214,11 @@ export default function OyaRuntimeDemo() {
   }
 
   return (
-    <section className="relative overflow-hidden border border-white/10 bg-[#0d0d0a]/80 shadow-[0_44px_140px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+    <section
+      className={`relative overflow-hidden border border-white/10 bg-[#0d0d0a]/80 shadow-[0_44px_140px_rgba(0,0,0,0.55)] backdrop-blur-xl ${
+        agentMode ? "h-screen w-screen border-0" : ""
+      }`}
+    >
       <div id="conversation-inner" className="hidden" />
       <Script src="https://telegram.org/js/telegram-web-app.js" strategy="afterInteractive" />
       <Script
@@ -221,7 +237,7 @@ export default function OyaRuntimeDemo() {
       />
 
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(245,166,35,0.18),transparent_38%),linear-gradient(180deg,transparent,rgba(0,0,0,0.58))]" />
-      <div className="relative grid min-h-[760px] lg:grid-cols-[1.05fr_0.95fr]">
+      <div className={`relative grid ${agentMode ? "h-screen min-h-[720px] lg:grid-cols-[1fr_1fr]" : "min-h-[760px] lg:grid-cols-[1.05fr_0.95fr]"}`}>
         <div className="relative min-h-[620px] overflow-hidden">
           <Image
             src="/assets/character.jpg"
@@ -237,7 +253,7 @@ export default function OyaRuntimeDemo() {
               <span className="h-2 w-2 rounded-full bg-[#3ddf8f] shadow-[0_0_16px_#3ddf8f]" />
               {statusLabel}
             </span>
-            <span>IronHeart Runtime</span>
+            <span>{agentMode ? "Zoom attendee mode" : "IronHeart Runtime"}</span>
           </div>
           <div className="absolute bottom-0 left-0 right-0 p-7 sm:p-10">
             <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#3ddf8f]">
@@ -299,8 +315,9 @@ export default function OyaRuntimeDemo() {
                   Let the AI enter the meeting.
                 </h3>
                 <p className="mt-7 text-lg leading-8 text-white/68">
-                  This starter prototype reuses IronHeart.AI call infrastructure: SDK loading, live voice
-                  connection, dial tone, hangup tone, mute control, and a text endpoint for meeting logic.
+                  {agentMode
+                    ? "Attendee.dev loads this page inside the meeting container. OYA asks for microphone access automatically, connects to IronHeart Runtime, and becomes the live voice layer for the Zoom room."
+                    : "This starter prototype reuses IronHeart.AI call infrastructure: SDK loading, live voice connection, dial tone, hangup tone, mute control, and a text endpoint for meeting logic."}
                 </p>
               </div>
 
@@ -311,7 +328,7 @@ export default function OyaRuntimeDemo() {
                   onClick={startCall}
                   type="button"
                 >
-                  {runtimeState === "loading" ? "Joining..." : "Call OYA"}
+                  {runtimeState === "loading" ? "Joining..." : agentMode ? "Start OYA now" : "Call OYA"}
                 </button>
                 <button
                   className="w-full rounded-full border border-white/15 bg-white/[0.06] px-7 py-5 font-mono text-xs font-black uppercase tracking-[0.2em] text-white transition hover:bg-white/10"
