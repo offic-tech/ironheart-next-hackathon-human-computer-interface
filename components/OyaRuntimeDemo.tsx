@@ -58,6 +58,13 @@ function localOyaReply(text: string) {
   return "For this meeting I would listen for goals, decisions, blockers, owner names, deadlines, and context drift. When the room gets stuck, I would speak with a short clarification or summary.";
 }
 
+function createDialAudio() {
+  const audio = new Audio();
+  audio.src = audio.canPlayType("audio/webm; codecs=opus") ? "/assets/dial.webm" : "/assets/dial.mp3";
+  audio.loop = true;
+  return audio;
+}
+
 function resolveRuntimeGlobals() {
   const scope = window as Window & {
     AudioClient?: unknown;
@@ -121,8 +128,7 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
       window.Telegram.WebApp.ready();
       window.Telegram.WebApp.expand();
     }
-    dialRef.current = new Audio("/assets/dial.mp3");
-    dialRef.current.loop = true;
+    dialRef.current = createDialAudio();
     hangupRef.current = new Audio("/assets/hangup.mp3");
     const retry = window.setInterval(() => {
       resolveRuntimeGlobals();
