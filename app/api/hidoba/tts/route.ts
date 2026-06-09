@@ -11,7 +11,7 @@ const ttsApiKey =
   process.env.NEXT_PUBLIC_IRONHEART_API_KEY ||
   "US5Ccoik5EKkTmcw59iVn6t4YdBZkSpEDlNT8AxW";
 
-const ttsVoice = process.env.HIDOBA_TTS_VOICE || "Dennis";
+const ttsVoice = process.env.HIDOBA_TTS_VOICE || "godfather_avila_en_us_4751dc4d";
 
 function cleanSpokenText(input: string) {
   return input

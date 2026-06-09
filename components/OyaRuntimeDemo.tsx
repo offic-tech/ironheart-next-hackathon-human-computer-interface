@@ -234,6 +234,7 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
   const autoStartedRef = useRef(false);
   const processedApiCallsRef = useRef<Set<string>>(new Set());
   const botContextRef = useRef<{ botId?: string; sessionId?: string }>({});
+  const memorySavedRef = useRef(false);
 
   const statusLabel = useMemo(() => {
     if (runtimeState === "loading") return "Joining meeting...";
@@ -263,6 +264,15 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
       if (managerRef.current) window.clearInterval(retry);
     }, 250);
     return () => window.clearInterval(retry);
+  }, []);
+
+  useEffect(() => {
+    function handleBeforeUnload() {
+      void saveCallMemory("browser-beforeunload");
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, []);
 
   useEffect(() => {
@@ -420,12 +430,14 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
       onStatusUpdate: (status: string) => console.log("[OYA]", status),
       onUserInfo: () => undefined,
       onHangUp: () => {
+        void saveCallMemory("runtime-hangup");
         stopDialTone();
         playHangup();
         setRuntimeState("idle");
         setSeconds(0);
       },
       onCallError: () => {
+        void saveCallMemory("runtime-error");
         stopDialTone();
         playHangup();
         setRuntimeState("idle");
@@ -437,6 +449,7 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
 
   async function startCall() {
     if (!managerRef.current || runtimeState !== "idle") return;
+    memorySavedRef.current = false;
     setRuntimeState("loading");
     dialRef.current?.play().catch(() => undefined);
     try {
@@ -450,11 +463,57 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
   }
 
   function endCall() {
+    void saveCallMemory("manual-end-call");
     stopDialTone();
     playHangup();
     setRuntimeState("idle");
     setSeconds(0);
     managerRef.current?.hangUp();
+  }
+
+  function collectRuntimeTranscript() {
+    const conversation = document.getElementById("conversation-inner");
+    if (!conversation) return "";
+
+    const messages = Array.from(conversation.querySelectorAll('[id^="message-"]'));
+    const transcript = messages
+      .map((element, index) => {
+        const className = element.getAttribute("class") || "";
+        const speaker = className.includes("human") ? "User" : className.includes("bot") ? "OYA" : `Speaker ${index + 1}`;
+        const text = cleanRuntimeText(element.textContent || "");
+        return text ? `${speaker}: ${text}` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+
+    return transcript.trim();
+  }
+
+  async function saveCallMemory(reason: string) {
+    if (memorySavedRef.current) return;
+
+    const transcript = collectRuntimeTranscript();
+    if (!transcript || transcript.length < 8) return;
+
+    memorySavedRef.current = true;
+
+    try {
+      await fetch("/api/memory/calls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        keepalive: true,
+        body: JSON.stringify({
+          title: `OYA Meeting ${new Date().toISOString()}`,
+          transcript,
+          reason,
+          duration_seconds: seconds,
+          ...botContextRef.current,
+        }),
+      });
+    } catch (error) {
+      memorySavedRef.current = false;
+      console.error("[OYA memory] save failed", error);
+    }
   }
 
   function toggleMute() {
