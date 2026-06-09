@@ -30,6 +30,9 @@ export async function POST(request: NextRequest) {
     meeting_url: meetingUrl,
     bot_name: "OYA - AI Digital Employee",
     join_at: body.join_at,
+    zoom_settings: {
+      sdk: "web",
+    },
     voice_agent_settings: {
       url: voiceAgentUrl,
     },
