@@ -21,7 +21,7 @@ type PostCallInput = {
 function getBedrockConfig() {
   return {
     region: process.env.AWS_REGION || "us-east-1",
-    modelId: process.env.AWS_BEDROCK_MODEL_ID || "amazon.nova-lite-v1:0",
+    modelId: process.env.AWS_BEDROCK_MODEL_ID || "global.amazon.nova-2-lite-v1:0",
   };
 }
 
