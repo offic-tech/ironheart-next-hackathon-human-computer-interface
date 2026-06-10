@@ -124,7 +124,7 @@ export default function Home() {
         <div className="mt-12 grid gap-4 lg:grid-cols-3">
           {pricingPlans.map((plan) => (
             <article
-              className={`relative min-h-[520px] overflow-hidden border p-6 sm:p-8 ${
+              className={`relative flex min-h-[600px] flex-col overflow-hidden border p-6 sm:p-8 ${
                 plan.featured
                   ? "border-iron-green/45 bg-iron-green/[0.09] shadow-[0_0_80px_rgba(61,223,143,0.12)]"
                   : "border-white/10 bg-white/[0.035]"
@@ -145,7 +145,7 @@ export default function Home() {
               </div>
               <p className="mt-7 min-h-[84px] text-base leading-7 text-iron-muted">{plan.description}</p>
               <div className="mt-8 h-px bg-white/10" />
-              <ul className="mt-8 space-y-4">
+              <ul className="mt-8 flex-1 space-y-4 pb-8">
                 {plan.features.map((feature) => (
                   <li className="flex gap-3 text-sm leading-6 text-iron-paper/85" key={feature}>
                     <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-iron-green shadow-[0_0_16px_rgba(61,223,143,0.8)]" />
@@ -154,7 +154,7 @@ export default function Home() {
                 ))}
               </ul>
               <CheckoutButton
-                className={`absolute bottom-6 left-6 right-6 rounded-full px-6 py-4 font-mono text-xs font-semibold uppercase tracking-[0.16em] transition disabled:cursor-wait disabled:opacity-70 sm:bottom-8 sm:left-8 sm:right-8 ${
+                className={`mt-auto min-h-16 w-full rounded-full px-6 py-4 text-center font-mono text-xs font-semibold uppercase tracking-[0.16em] transition disabled:cursor-wait disabled:opacity-70 ${
                   plan.featured
                     ? "bg-iron-green text-black hover:-translate-y-1"
                     : "border border-white/15 bg-white/[0.06] text-white hover:bg-white/10"
