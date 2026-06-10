@@ -1,9 +1,24 @@
-const sessions = new Map<string, string>();
+export type AttendeeSessionMetadata = {
+  botId: string;
+  meetingUrl?: string;
+  provider?: "zoom" | "google_meet" | "generic";
+  state?: string;
+  createdAt: string;
+};
 
-export function setAttendeeSession(sessionId: string, botId: string) {
-  sessions.set(sessionId, botId);
+const sessions = new Map<string, AttendeeSessionMetadata>();
+
+export function setAttendeeSession(sessionId: string, metadata: Omit<AttendeeSessionMetadata, "createdAt">) {
+  sessions.set(sessionId, {
+    ...metadata,
+    createdAt: new Date().toISOString(),
+  });
 }
 
 export function getAttendeeSessionBotId(sessionId: string) {
+  return sessions.get(sessionId)?.botId;
+}
+
+export function getAttendeeSession(sessionId: string) {
   return sessions.get(sessionId);
 }
