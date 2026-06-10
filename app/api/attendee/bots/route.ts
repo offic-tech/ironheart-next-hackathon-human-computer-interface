@@ -5,8 +5,6 @@ import { setAttendeeSession } from "../../../../lib/attendeeSessions";
 const attendeeApiOrigin = process.env.ATTENDEE_API_ORIGIN || "https://app.attendee.dev";
 const attendeeApiKey = process.env.ATTENDEE_API_KEY;
 
-type MeetingProvider = "zoom" | "google_meet" | "generic";
-
 function getPublicOrigin(request: NextRequest) {
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
   const proto = request.headers.get("x-forwarded-proto") || "https";
@@ -14,24 +12,13 @@ function getPublicOrigin(request: NextRequest) {
   return `${proto}://${host}`;
 }
 
-function getMeetingProvider(url: string): MeetingProvider {
-  if (/meet\.google\.com/i.test(url)) return "google_meet";
-  if (/zoom\.us|zoomgov\.com/i.test(url)) return "zoom";
-  return "generic";
-}
-
 function isValidMeetingUrl(url: string) {
   try {
     const parsed = new URL(url);
-    return parsed.protocol === "https:" && Boolean(parsed.hostname);
+    return parsed.protocol === "https:" && /zoom\.us|zoomgov\.com/i.test(parsed.hostname);
   } catch {
     return false;
   }
-}
-
-function isGoogleMeetUrl(url: string) {
-  const normalized = url.trim().toLowerCase();
-  return normalized.startsWith("https://meet.google.com/") || normalized.includes("meet.google.com");
 }
 
 export async function POST(request: NextRequest) {
@@ -42,33 +29,26 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const body = (await request.json()) as { meeting_url?: string; google_meet_url?: string; join_at?: string };
-  const meetingUrl = (body.meeting_url || body.google_meet_url || "").trim();
+  const body = (await request.json()) as { meeting_url?: string; join_at?: string };
+  const meetingUrl = body.meeting_url?.trim();
   if (!meetingUrl || !isValidMeetingUrl(meetingUrl)) {
-    return NextResponse.json({ error: "Error: invalid meeting link" }, { status: 400 });
-  }
-  if (body.google_meet_url && !isGoogleMeetUrl(body.google_meet_url)) {
-    return NextResponse.json({ error: "Error: invalid meeting link" }, { status: 400 });
+    return NextResponse.json({ error: "A valid HTTPS Zoom meeting URL is required." }, { status: 400 });
   }
 
-  const provider = getMeetingProvider(meetingUrl);
   const publicOrigin = getPublicOrigin(request);
   const sessionId = randomUUID();
   const voiceAgentUrl = `${publicOrigin}/agent?autostart=1&source=attendee&sessionId=${encodeURIComponent(sessionId)}`;
-  const payload: Record<string, unknown> = {
+  const payload = {
     meeting_url: meetingUrl,
     bot_name: "OYA - AI Digital Employee",
     join_at: body.join_at,
+    zoom_settings: {
+      sdk: "web",
+    },
     voice_agent_settings: {
       url: voiceAgentUrl,
     },
   };
-
-  if (provider === "zoom") {
-    payload.zoom_settings = {
-      sdk: "web",
-    };
-  }
 
   const attendeeResponse = await fetch(`${attendeeApiOrigin}/api/v1/bots`, {
     method: "POST",
@@ -101,7 +81,6 @@ export async function POST(request: NextRequest) {
     setAttendeeSession(sessionId, {
       botId,
       meetingUrl,
-      provider,
       state: data.state,
     });
     const patchResponse = await fetch(`${attendeeApiOrigin}/api/v1/bots/${botId}/voice_agent_settings`, {
@@ -129,7 +108,6 @@ export async function POST(request: NextRequest) {
     ...data,
     sessionId,
     meeting_url: meetingUrl,
-    provider,
     voice_agent_url: finalVoiceAgentUrl,
     request_payload: payload,
   });

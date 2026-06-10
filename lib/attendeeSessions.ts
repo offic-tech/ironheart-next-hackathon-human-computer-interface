@@ -1,7 +1,6 @@
 export type AttendeeSessionMetadata = {
   botId: string;
   meetingUrl?: string;
-  provider?: "zoom" | "google_meet" | "generic";
   state?: string;
   createdAt: string;
 };
