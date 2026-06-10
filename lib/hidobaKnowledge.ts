@@ -1,3 +1,5 @@
+import { processPostCallWithAws } from "./awsPostCall";
+
 type KnowledgeUploadInput = {
   name?: string;
   folder?: string;
@@ -172,6 +174,17 @@ function buildCallMarkdown(memory: NormalizedCallMemory) {
   ].join("\n");
 }
 
+function pickCallId(memory: NormalizedCallMemory) {
+  const compactPayload = memory.metadata.compact_payload;
+  if (compactPayload && typeof compactPayload === "object") {
+    const record = compactPayload as Record<string, unknown>;
+    const candidate = record.call_id || record.id || record.session_id || record.bot_id;
+    if (candidate) return String(candidate);
+  }
+
+  return memory.title;
+}
+
 async function hidobaFetch(path: string, init: RequestInit = {}) {
   const config = getKnowledgeConfig();
   const response = await fetch(`${config.origin}${path}`, {
@@ -306,12 +319,60 @@ export async function saveCallMemory(payload: unknown) {
     throw new Error("No usable transcript found in call payload.");
   }
 
-  const markdown = buildCallMarkdown(memory);
+  let awsPostCall: Awaited<ReturnType<typeof processPostCallWithAws>> | null = null;
+  let awsError: string | null = null;
+
+  try {
+    awsPostCall = await processPostCallWithAws({
+      callId: pickCallId(memory),
+      title: memory.title,
+      transcript: memory.transcript,
+      metadata: memory.metadata,
+    });
+  } catch (error) {
+    awsError = error instanceof Error ? error.message : "Unknown AWS post-call processing error.";
+    console.error("[aws post-call] failed", error);
+  }
+
+  const markdown = [
+    buildCallMarkdown({
+      ...memory,
+      metadata: {
+        ...memory.metadata,
+        aws_post_call: awsPostCall
+          ? {
+              prefix: awsPostCall.prefix,
+              transcript: awsPostCall.transcriptUpload,
+              summary: awsPostCall.summaryUpload,
+              backup: awsPostCall.backupUpload,
+              bedrock_mode: awsPostCall.analysis.mode,
+              bedrock_model: awsPostCall.analysis.model,
+            }
+          : null,
+        aws_post_call_error: awsError,
+      },
+    }),
+    awsPostCall?.analysisMarkdown || "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   return uploadKnowledgeDocument({
     name: memory.title,
     folder: getKnowledgeConfig().callsFolder,
     text: markdown,
-    metadata: memory.metadata,
+    metadata: {
+      ...memory.metadata,
+      aws_post_call: awsPostCall
+        ? {
+            prefix: awsPostCall.prefix,
+            transcript: awsPostCall.transcriptUpload,
+            summary: awsPostCall.summaryUpload,
+            backup: awsPostCall.backupUpload,
+            bedrock: awsPostCall.analysis,
+          }
+        : null,
+      aws_post_call_error: awsError,
+    },
   });
 }

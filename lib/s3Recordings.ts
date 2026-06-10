@@ -9,6 +9,13 @@ type RecordingUploadInput = {
   botId?: string;
 };
 
+type TextObjectInput = {
+  key: string;
+  body: string;
+  contentType?: string;
+  metadata?: Record<string, string>;
+};
+
 function getAwsConfig() {
   return {
     region: process.env.AWS_REGION || "us-east-1",
@@ -50,6 +57,14 @@ function extensionFromContentType(contentType?: string) {
   if (contentType.includes("wav")) return "wav";
   if (contentType.includes("ogg")) return "ogg";
   return "webm";
+}
+
+export function createCallStoragePrefix(callId?: string, date = new Date()) {
+  const yyyy = date.getUTCFullYear();
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(date.getUTCDate()).padStart(2, "0");
+
+  return ["calls", String(yyyy), mm, dd, safeSegment(callId)].join("/");
 }
 
 export function shouldUseMockS3() {
@@ -147,5 +162,44 @@ export async function createReadUrl(key: string) {
     expiresIn: 900,
     bucket: config.bucket,
     region: config.region,
+  };
+}
+
+
+export async function uploadTextObject(input: TextObjectInput) {
+  const config = getAwsConfig();
+  const contentType = input.contentType || "text/markdown; charset=utf-8";
+
+  if (shouldUseMockS3()) {
+    return {
+      mode: "mock" as const,
+      key: input.key,
+      bucket: config.bucket || "mock-bucket",
+      region: config.region,
+      size: Buffer.byteLength(input.body, "utf8"),
+      url: `${mockOrigin}/recordings/${encodeURIComponent(input.key)}`,
+      uploaded: false,
+    };
+  }
+
+  const client = createS3Client();
+  await client.send(
+    new PutObjectCommand({
+      Bucket: config.bucket,
+      Key: input.key,
+      Body: input.body,
+      ContentType: contentType,
+      Metadata: input.metadata,
+    }),
+  );
+
+  return {
+    mode: "s3" as const,
+    key: input.key,
+    bucket: config.bucket,
+    region: config.region,
+    size: Buffer.byteLength(input.body, "utf8"),
+    url: null,
+    uploaded: true,
   };
 }
