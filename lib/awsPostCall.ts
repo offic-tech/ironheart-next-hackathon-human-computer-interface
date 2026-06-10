@@ -1,3 +1,4 @@
+import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import { createCallStoragePrefix, uploadTextObject } from "./s3Recordings";
 
 export type BedrockMeetingAnalysis = {
@@ -19,7 +20,6 @@ type PostCallInput = {
 
 function getBedrockConfig() {
   return {
-    token: process.env.AWS_BEARER_TOKEN_BEDROCK || "",
     region: process.env.AWS_REGION || "us-east-1",
     modelId: process.env.AWS_BEDROCK_MODEL_ID || "amazon.nova-lite-v1:0",
   };
@@ -119,59 +119,37 @@ function extractBedrockText(data: unknown): string {
 
 export async function summarizeTranscriptWithBedrock(transcript: string): Promise<BedrockMeetingAnalysis> {
   const config = getBedrockConfig();
-
-  if (!config.token) {
-    return fallbackAnalyzeTranscript(transcript, "AWS_BEARER_TOKEN_BEDROCK is not configured.");
-  }
+  const client = new BedrockRuntimeClient({ region: config.region });
 
   try {
-    const response = await fetch(
-      `https://bedrock-runtime.${config.region}.amazonaws.com/model/${encodeURIComponent(config.modelId)}/converse`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${config.token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          system: [
-            {
-              text:
-                "You are a post-call reasoning layer for OYA, an AI Digital Employee. Return only valid JSON with fields: summary, keyDecisions, actionItems, unresolvedQuestions.",
-            },
-          ],
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  text: `Analyze this meeting transcript. Generate a concise summary, key decisions, action items, and unresolved questions.\n\nTranscript:\n${transcript.slice(0, 45000)}`,
-                },
-              ],
-            },
-          ],
-          inferenceConfig: {
-            maxTokens: 1800,
-            temperature: 0.2,
-            topP: 0.9,
+    const response = await client.send(
+      new ConverseCommand({
+        modelId: config.modelId,
+        system: [
+          {
+            text:
+              "You are a post-call reasoning layer for OYA, an AI Digital Employee. Return only valid JSON with fields: summary, keyDecisions, actionItems, unresolvedQuestions.",
           },
-        }),
-      },
+        ],
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                text: `Analyze this meeting transcript. Generate a concise summary, key decisions, action items, and unresolved questions.\n\nTranscript:\n${transcript.slice(0, 45000)}`,
+              },
+            ],
+          },
+        ],
+        inferenceConfig: {
+          maxTokens: 1800,
+          temperature: 0.2,
+          topP: 0.9,
+        },
+      }),
     );
 
-    const responseText = await response.text();
-    let data: unknown = responseText;
-    try {
-      data = JSON.parse(responseText);
-    } catch {
-      // Keep text response.
-    }
-
-    if (!response.ok) {
-      return fallbackAnalyzeTranscript(transcript, `Bedrock request failed: ${response.status} ${responseText}`);
-    }
-
-    const text = typeof data === "string" ? data : extractBedrockText(data);
+    const text = extractBedrockText(response);
     return parseBedrockAnalysis(text, config.modelId);
   } catch (error) {
     return fallbackAnalyzeTranscript(

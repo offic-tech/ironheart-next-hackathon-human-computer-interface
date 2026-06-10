@@ -107,8 +107,7 @@ POST /api/aws/bedrock/summarize
 AWS environment variables:
 
 ```env
-AWS_BEARER_TOKEN_BEDROCK=
-AWS_REGION=us-east-1
+AWS_REGION=us-west-2
 AWS_S3_BUCKET=
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
@@ -117,6 +116,8 @@ AWS_BEDROCK_MODEL_ID=amazon.nova-lite-v1:0
 ```
 
 If S3 credentials are missing or `AWS_S3_MOCK_MODE=true`, uploads run in mock mode and return deterministic S3-style keys without writing to AWS.
+
+Bedrock uses `@aws-sdk/client-bedrock-runtime` and the default AWS credential provider chain. Do not use `Authorization: Bearer` tokens or Bedrock Mantle API keys.
 
 ## Development
 
