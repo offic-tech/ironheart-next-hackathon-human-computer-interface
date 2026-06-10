@@ -41,6 +41,18 @@ type ApiCall = {
   query: string;
 };
 
+type RecordingUploadUrlResponse = {
+  mode: "mock" | "s3";
+  key: string;
+  method: "PUT";
+  uploadUrl: string;
+  publicUrl?: string | null;
+  expiresIn: number;
+  bucket: string;
+  region: string;
+  error?: string;
+};
+
 const OYA_API_CALL_INSTRUCTIONS = `When you need real-time internet search or external data, output this command instead of normal speech:
 
 [[API_CALL]]
@@ -262,6 +274,10 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
   const processedApiCallsRef = useRef<Set<string>>(new Set());
   const botContextRef = useRef<{ botId?: string; sessionId?: string }>({});
   const memorySavedRef = useRef(false);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<BlobPart[]>([]);
+  const recordingStartedAtRef = useRef<string | null>(null);
 
   const statusLabel = useMemo(() => {
     if (runtimeState === "loading") return "Joining meeting...";
@@ -483,10 +499,12 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
         stopDialTone();
         setSeconds(0);
         setRuntimeState("active");
+        void startRecording();
       },
       onStatusUpdate: (status: string) => console.log("[OYA]", status),
       onUserInfo: () => undefined,
       onHangUp: () => {
+        void stopRecording("runtime-hangup");
         void saveCallMemory("runtime-hangup");
         stopDialTone();
         playHangup();
@@ -494,6 +512,7 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
         setSeconds(0);
       },
       onCallError: () => {
+        void stopRecording("runtime-error");
         void saveCallMemory("runtime-error");
         stopDialTone();
         playHangup();
@@ -507,6 +526,7 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
   async function startCall() {
     if (!managerRef.current || runtimeState !== "idle") return;
     memorySavedRef.current = false;
+    recordingChunksRef.current = [];
     setRuntimeState("loading");
     dialRef.current?.play().catch(() => undefined);
     try {
@@ -520,12 +540,131 @@ export default function OyaRuntimeDemo({ autoStart = false, agentMode = false }:
   }
 
   function endCall() {
+    void stopRecording("manual-end-call");
     void saveCallMemory("manual-end-call");
     stopDialTone();
     playHangup();
     setRuntimeState("idle");
     setSeconds(0);
     managerRef.current?.hangUp();
+  }
+
+  function getSupportedRecordingMimeType() {
+    const candidates = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+      "audio/mp4",
+    ];
+
+    return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) || "";
+  }
+
+  async function startRecording() {
+    if (recorderRef.current?.state === "recording") return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      console.warn("[OYA recording] MediaRecorder is not available in this browser.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = getSupportedRecordingMimeType();
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+
+      recordingChunksRef.current = [];
+      recordingStartedAtRef.current = new Date().toISOString();
+      recordingStreamRef.current = stream;
+      recorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
+      };
+
+      recorder.onstop = () => {
+        const contentType = recorder.mimeType || "audio/webm";
+        const blob = new Blob(recordingChunksRef.current, { type: contentType });
+        recordingChunksRef.current = [];
+        void uploadRecording(blob, contentType);
+      };
+
+      recorder.start(1000);
+      console.log("[OYA recording] started", { mimeType: recorder.mimeType });
+    } catch (error) {
+      console.warn("[OYA recording] could not start microphone recording", error);
+    }
+  }
+
+  async function stopRecording(reason: string) {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state === "inactive") return;
+
+    console.log("[OYA recording] stopping", { reason });
+    recorder.stop();
+    recorderRef.current = null;
+    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recordingStreamRef.current = null;
+  }
+
+  async function uploadRecording(blob: Blob, contentType: string) {
+    if (!blob.size) return;
+
+    try {
+      const uploadUrlResponse = await fetch("/api/recordings/upload-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contentType,
+          ...botContextRef.current,
+        }),
+      });
+
+      const uploadData = (await uploadUrlResponse.json()) as RecordingUploadUrlResponse;
+      if (!uploadUrlResponse.ok || uploadData.error) {
+        throw new Error(uploadData.error || "Recording upload URL request failed.");
+      }
+
+      let uploaded = false;
+
+      if (uploadData.mode === "s3") {
+        const putResponse = await fetch(uploadData.uploadUrl, {
+          method: uploadData.method || "PUT",
+          headers: { "Content-Type": contentType },
+          body: blob,
+        });
+
+        if (!putResponse.ok) {
+          throw new Error(`S3 upload failed with status ${putResponse.status}`);
+        }
+
+        uploaded = true;
+      } else {
+        console.info("[OYA recording] mock upload", {
+          key: uploadData.key,
+          size: blob.size,
+          contentType,
+        });
+      }
+
+      await fetch("/api/recordings/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: uploadData.mode,
+          key: uploadData.key,
+          bucket: uploadData.bucket,
+          region: uploadData.region,
+          uploaded,
+          size: blob.size,
+          contentType,
+          startedAt: recordingStartedAtRef.current,
+          completedAt: new Date().toISOString(),
+          ...botContextRef.current,
+        }),
+      });
+    } catch (error) {
+      console.error("[OYA recording] upload failed", error);
+    }
   }
 
   function collectRuntimeTranscript() {
